@@ -15,10 +15,10 @@ const defaultData={
         {id:5,type:'expense',name:'Đi cafe',cat:'Giải trí',wallet:2,amount:85000,date:'16/09/2026',time:'14:10'}
     ],
     tasks:[
-        {id:1,name:'Học DSA',time:'13:30',date:'24/09/2026',done:true,cls:'green'},
-        {id:2,name:'Làm bài C++',time:'15:00',date:'24/09/2026',done:false,cls:'blue'},
-        {id:3,name:'Tập thể dục',time:'18:30',date:'24/09/2026',done:false,cls:'pink'},
-        {id:4,name:'Đọc sách',time:'20:00',date:'24/09/2026',done:false,cls:'purple'}
+        {id:1,name:'Học DSA',time:'13:30',date:dateKey(),done:true,cls:'green'},
+        {id:2,name:'Làm bài C++',time:'15:00',date:dateKey(),done:false,cls:'blue'},
+        {id:3,name:'Tập thể dục',time:'18:30',date:dateKey(),done:false,cls:'pink'},
+        {id:4,name:'Đọc sách',time:'20:00',date:dateKey(),done:false,cls:'purple'}
     ],
     settings:{
         hide:false,
@@ -41,12 +41,14 @@ let moneyVisible=true;
 let scheduleTab='work';
 let statsTab='category';
 let financeTab='overview';
-let selectedDate=24;
+let selectedDate=todayDate();
 
 let timerMode='countdown';
 let reminderCheckInt=null;
 
 let selectedWalletForTx=null;
+let lastTodayKey=null;
+let dayRefreshTimer=null;
 
 
 /* =========================
@@ -82,13 +84,42 @@ function wallet(id){
     return data.wallets.find(w=>w.id==id);
 }
 
-function dateKey(day,month=9,year=2026){
-    return `${String(day).padStart(2,'0')}/${String(month).padStart(2,'0')}/${year}`;
+function todayDate(){
+    const now=new Date();
+    return new Date(now.getFullYear(),now.getMonth(),now.getDate());
 }
 
-function tasksForDate(day){
+function dateKey(date=todayDate(),month,year){
+    if(!(date instanceof Date))
+        date=new Date(year??todayDate().getFullYear(),(month??todayDate().getMonth()+1)-1,date);
+
+    return `${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}/${date.getFullYear()}`;
+}
+
+function dateInputValue(date=todayDate()){
+    return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+
+function parseDateKey(value){
+    if(!value)
+        return null;
+
+    const parts=String(value).split(/[/-]/);
+
+    if(parts.length!==3)
+        return null;
+
+    const [a,b,c]=parts.map(Number);
+    const date=parts[0].length===4
+        ?new Date(a,b-1,c)
+        :new Date(c,b-1,a);
+
+    return Number.isNaN(date.getTime())?null:date;
+}
+
+function tasksForDate(date=selectedDate){
     return data.tasks.filter(
-        t=>(t.date||'24/09/2026')===dateKey(day)
+        t=>(t.date||dateKey(todayDate()))===dateKey(date)
     );
 }
 
@@ -97,12 +128,52 @@ function ensureTaskDates(){
 
     data.tasks.forEach(t=>{
         if(!t.date){
-            t.date='24/09/2026';
+            t.date=dateKey(todayDate());
             changed=true;
         }
     });
 
+    if(!Number.isFinite(Number(data.points))){
+        data.points=data.tasks.filter(t=>t.done).length;
+        changed=true;
+    }else{
+        data.points=Math.max(0,Number(data.points));
+    }
+
     if(changed) save();
+}
+
+function updateForNewDay(){
+    const today=todayDate();
+    const todayKey=dateKey(today);
+
+    if(lastTodayKey===null){
+        lastTodayKey=todayKey;
+        return;
+    }
+
+    if(lastTodayKey===todayKey)
+        return;
+
+    const previousKey=lastTodayKey;
+    lastTodayKey=todayKey;
+
+    if(dateKey(selectedDate)===previousKey)
+        selectedDate=today;
+
+    render();
+}
+
+function scheduleDailyRefresh(){
+    clearTimeout(dayRefreshTimer);
+
+    const now=new Date();
+    const nextDay=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1,0,0,1);
+
+    dayRefreshTimer=setTimeout(()=>{
+        updateForNewDay();
+        scheduleDailyRefresh();
+    },Math.max(1,nextDay-now));
 }
 
 function fmt(v){
@@ -224,15 +295,23 @@ function home(){
 
         <div class="hello">
             <b>Xin chào, Triển 👋</b>
-            <small>Thứ Năm, 24 tháng 9, 2026</small>
+            <small>${todayDate().toLocaleDateString('vi-VN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</small>
 
             <div class="quote">
                 “Mỗi ngày là một cơ hội để tốt hơn so với chính mình.”
             </div>
         </div>
 
+        <div class="points-card" aria-label="Điểm thưởng">
+            <div>
+                <small>Điểm tích lũy</small>
+                <b>${Number(data.points)||0}</b>
+            </div>
+            <span>điểm</span>
+        </div>
+
         <div class="section-head">
-            <h3>Hôm nay (${data.tasks.length})</h3>
+            <h3>Nhiệm vụ (${data.tasks.length})</h3>
             <button type="button" onclick="go('schedule')">Xem tất cả ›</button>
         </div>
 
@@ -292,7 +371,7 @@ function home(){
 function taskHTML(t){
 
     return `
-    <div class="task ${t.cls}" onclick="toggleTask(${t.id})">
+    <div class="task ${t.cls} ${t.done?'task-done':''}" onclick="toggleTask(${t.id})">
 
         <span class="check ${t.done?'done':''}">
             ${t.done?'✓':''}
@@ -377,6 +456,9 @@ function setScheduleTab(tab){
 
 function scheduleWork(){
 
+    const weekStart=new Date(selectedDate);
+    weekStart.setDate(selectedDate.getDate()-((selectedDate.getDay()+6)%7));
+
     return `
     <div class="search">
 
@@ -394,27 +476,31 @@ function scheduleWork(){
         ${
             ['T2','T3','T4','T5','T6','T7','CN']
             .map((d,i)=>
-                `<button
+                (()=>{
+                    const dayDate=new Date(weekStart);
+                    dayDate.setDate(weekStart.getDate()+i);
+                    return `<button
                     type="button"
-                    class="day ${i===2?'active':''}"
-                    onclick="selectScheduleDate(${22+i})">
+                    class="day ${dateKey(dayDate)===dateKey(selectedDate)?'active':''}"
+                    onclick="selectScheduleDate('${dateKey(dayDate)}')">
 
                     ${d}
 
-                    <b>${22+i}</b>
+                    <b>${dayDate.getDate()}</b>
 
-                </button>`
+                </button>`;
+                })()
             ).join('')
         }
 
     </div>
 
     <div class="section-head">
-        <h3>Hôm nay (${data.tasks.length})</h3>
+        <h3>${dateKey(selectedDate)} (${tasksForDate(selectedDate).length})</h3>
     </div>
 
     <div id="taskList">
-        ${data.tasks.map(taskHTML).join('')}
+        ${tasksForDate(selectedDate).map(taskHTML).join('')||'<div class="empty">Không có công việc trong ngày này</div>'}
     </div>
 
     <button
@@ -433,6 +519,13 @@ function scheduleWork(){
 function scheduleDay(){
 
     let list=tasksForDate(selectedDate);
+    const year=selectedDate.getFullYear();
+    const month=selectedDate.getMonth();
+    const firstDay=new Date(year,month,1);
+    const offset=(firstDay.getDay()+6)%7;
+    const daysInMonth=new Date(year,month+1,0).getDate();
+    const cellCount=Math.ceil((offset+daysInMonth)/7)*7;
+    const todayKey=dateKey(todayDate());
 
     return `
     <div class="page-calendar">
@@ -441,7 +534,7 @@ function scheduleDay(){
 
             <button type="button" onclick="changeMonth(-1)">‹</button>
 
-            <b>Tháng 9, 2026</b>
+            <b>${selectedDate.toLocaleDateString('vi-VN',{month:'long',year:'numeric'})}</b>
 
             <button type="button" onclick="changeMonth(1)">›</button>
 
@@ -456,18 +549,23 @@ function scheduleDay(){
             }
 
             ${
-                Array.from({length:35},(_,i)=>{
+                Array.from({length:cellCount},(_,i)=>{
 
-                    let day=i-1;
+                    const day=i-offset+1;
 
-                    if(day<1||day>30)
+                    if(day<1||day>daysInMonth)
                         return '<span></span>';
+
+                    const cellDate=new Date(year,month,day);
+                    const key=dateKey(cellDate);
+                    const selected=key===dateKey(selectedDate);
 
                     return `
                     <button
                         type="button"
-                        onclick="selectScheduleDate(${day})"
-                        class="${day===selectedDate?'today':''}">
+                        onclick="selectScheduleDate('${key}')"
+                        class="${selected?'today':''} ${key===todayKey?'calendar-current':''}"
+                        ${key===todayKey?'aria-current="date"':''}>
                         ${day}
                     </button>`;
 
@@ -483,12 +581,12 @@ function scheduleDay(){
                 <b style="font-size:11px">
 
                     ${
-                        selectedDate===24
+                        dateKey(selectedDate)===todayKey
                         ?'Hôm nay, '
                         :''
                     }
 
-                    ${String(selectedDate).padStart(2,'0')}/09/2026
+                    ${dateKey(selectedDate)}
 
                 </b>
 
@@ -568,7 +666,7 @@ function scheduleReminder(){
 
         ${
             data.tasks.map(t=>
-                `<div class="reminder-row">
+                `<div class="reminder-row ${t.done?'task-done':''}">
 
                     <button
                         type="button"
@@ -612,20 +710,25 @@ function scheduleReminder(){
 
 function selectScheduleDate(d){
 
-    selectedDate=Number(d);
+    selectedDate=typeof d==='number'
+        ?new Date(selectedDate.getFullYear(),selectedDate.getMonth(),d)
+        :parseDateKey(d)||todayDate();
 
     scheduleTab='day';
 
     render();
 
     toast(
-        `Đã chọn ngày ${String(selectedDate).padStart(2,'0')}/09/2026`
+        `Đã chọn ngày ${dateKey(selectedDate)}`
     );
 }
 
 function changeMonth(delta){
 
-    toast('Bản lịch tháng hiện tại là 09/2026');
+    const nextMonth=new Date(selectedDate.getFullYear(),selectedDate.getMonth()+delta,1);
+    const lastDay=new Date(nextMonth.getFullYear(),nextMonth.getMonth()+1,0).getDate();
+    selectedDate=new Date(nextMonth.getFullYear(),nextMonth.getMonth(),Math.min(selectedDate.getDate(),lastDay));
+    render();
 }
 
 function reminderModal(){
@@ -645,19 +748,7 @@ function editTask(id){
     if(!t)
         return toast('Không tìm thấy sự kiện');
 
-    let dateValue='24/09/2026';
-
-    if(t.date){
-
-        const parts=t.date.split('/');
-
-        if(parts.length===3){
-
-            dateValue=
-                `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
-
-        }
-    }
+    const dateValue=dateInputValue(parseDateKey(t.date)||todayDate());
 
     openSheet(`
 
@@ -764,11 +855,9 @@ function updateTask(id){
     if(!date)
         return toast('Chọn ngày');
 
-    const [y,m,d]=date.split('-');
-
     t.name=name;
     t.time=time;
-    t.date=`${d}/${m}/${y}`;
+    t.date=dateKey(parseDateKey(date));
 
     save();
 
@@ -817,7 +906,7 @@ function filterTasks(){
     let q=input.value.toLowerCase();
 
     list.innerHTML=
-        data.tasks
+        tasksForDate(selectedDate)
         .filter(
             t=>
                 String(t.name)
@@ -836,6 +925,7 @@ function toggleTask(id){
         return;
 
     t.done=!t.done;
+    data.points=Math.max(0,(Number(data.points)||0)+(t.done?1:-1));
 
     save();
 
@@ -883,7 +973,7 @@ function taskModal(){
                 id="taskDate"
                 type="date"
                 class="input"
-                value="${dateKey(selectedDate).split('/').reverse().join('-')}">
+                value="${dateInputValue(selectedDate)}">
 
         </div>
 
@@ -935,9 +1025,7 @@ function addTask(){
         return toast('Nhập tên công việc');
 
     if(!date)
-        date=dateKey(selectedDate).split('/').reverse().join('-');
-
-    let [y,m,d]=date.split('-');
+        date=dateInputValue(selectedDate);
 
     data.tasks.push({
 
@@ -947,7 +1035,7 @@ function addTask(){
 
         time,
 
-        date:`${d}/${m}/${y}`,
+        date:dateKey(parseDateKey(date)),
 
         done:false,
 
@@ -1109,8 +1197,7 @@ function timerReminderForm(){
 
     let now=new Date();
 
-    let date=
-        now.toISOString().slice(0,10);
+    let date=dateInputValue(now);
 
     let time=
         now.toTimeString().slice(0,5);
@@ -1256,8 +1343,7 @@ function checkDueReminders(){
 
     let now=new Date();
 
-    let key=
-        now.toLocaleDateString('vi-VN');
+    let key=dateKey(now);
 
     let tm=
         now.toTimeString().slice(0,5);
@@ -2450,7 +2536,7 @@ function txModal(type='expense',walletId=null){
 
             <input
                 id="txDate"
-                value="24/09/2026">
+                value="${dateKey(todayDate())}">
 
         </div>
 
@@ -2556,7 +2642,7 @@ function saveTx(){
             .getElementById('txDate')
             .value
             ||
-            '24/09/2026',
+            dateKey(todayDate()),
 
         time:
             new Date()
@@ -2727,7 +2813,7 @@ function doTransfer(){
 
         amount:a,
 
-        date:'24/09/2026',
+        date:dateKey(todayDate()),
 
         time:
             new Date()
@@ -2868,7 +2954,7 @@ function editTx(id){
             <input
                 id="editTxDate"
                 class="input"
-                value="${esc(t.date||'24/09/2026')}">
+                value="${esc(t.date||dateKey(todayDate()))}">
 
         </div>
 
@@ -3748,6 +3834,14 @@ function notify(title,body){
 /* =========================
    START APP
 ========================= */
+
+lastTodayKey=dateKey(todayDate());
+scheduleDailyRefresh();
+window.addEventListener('focus',updateForNewDay);
+document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible')
+        updateForNewDay();
+});
 
 startReminderChecks();
 
