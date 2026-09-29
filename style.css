@@ -29,6 +29,16 @@
 body.dark .points-card{background:linear-gradient(135deg,#1c2b4d,#16382f)}
 body.dark .points-card small{color:#9aa8be}
 body.dark .points-card b,body.dark .points-card>span{color:#8ca6ff}
+.icon-choice{min-height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px}
+.icon-choice.selected{outline:2px solid var(--blue);background:var(--blue2)}
+.icon-choice .wallet-icon{margin:0;width:30px;height:30px;font-size:16px}
+.icon-choice .wallet-icon.wallet-code{font-size:8px;letter-spacing:-.25px}
+.icon-choice small{font-size:8px}
+.wallet-icon.wallet-code{font-size:8px;letter-spacing:-.25px}
+.wallet-icon.mbbank{background:#1977c9}
+.wallet-icon.vietcombank{background:#168b53}
+.wallet-icon.techcombank{background:#df242c}
+.wallet-icon.bidv{background:#145faa}
 .bar-track{height:6px;background:#edf1f7;border-radius:5px;margin-top:5px;overflow:hidden}
 .bar-track i{display:block;height:100%;border-radius:5px;background:#5d8fee}
 

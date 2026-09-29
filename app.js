@@ -84,6 +84,71 @@ function wallet(id){
     return data.wallets.find(w=>w.id==id);
 }
 
+const walletIconOptions=[
+    {icon:'🏦',label:'Ngân hàng'},
+    {icon:'💳',label:'Thẻ'},
+    {icon:'💵',label:'Tiền mặt'},
+    {icon:'💰',label:'Tiền'},
+    {icon:'M',label:'MoMo'},
+    {icon:'MB',label:'MB Bank'},
+    {icon:'VCB',label:'Vietcombank'},
+    {icon:'TCB',label:'Techcombank'},
+    {icon:'BIDV',label:'BIDV'}
+];
+
+function walletIconClass(icon){
+    return ({
+        '🏦':'bank',
+        '💳':'cardblue',
+        '💵':'cash',
+        '💰':'credit',
+        'M':'momo',
+        'MB':'mbbank',
+        'VCB':'vietcombank',
+        'TCB':'techcombank',
+        'BIDV':'bidv'
+    })[icon]||'bank';
+}
+
+function walletIconCodeClass(icon){
+    return /^[A-Z]{1,4}$/.test(String(icon||''))?'wallet-code':'';
+}
+
+function walletIconChoiceGrid(handler,selected=''){
+    return walletIconOptions.map(({icon,label})=>{
+        return `<button type="button"
+            class="quick icon-choice ${selected===icon?'selected':''}"
+            data-icon="${esc(icon)}"
+            aria-label="${esc(label)}"
+            onclick="${handler}('${icon}')">
+            <span class="wallet-icon ${walletIconClass(icon)} ${walletIconCodeClass(icon)}">${esc(icon)}</span>
+            <small>${esc(label)}</small>
+        </button>`;
+    }).join('');
+}
+
+function ensureWalletIcons(){
+    let changed=false;
+
+    data.wallets.forEach(w=>{
+        if(w.icon==='▣'){
+            w.icon='💵';
+            w.cls='cash';
+            changed=true;
+        }else if(w.icon==='▤'){
+            w.icon='💳';
+            w.cls='cardblue';
+            changed=true;
+        }else if(w.icon==='mo'){
+            w.icon='M';
+            w.cls='momo';
+            changed=true;
+        }
+    });
+
+    if(changed) save();
+}
+
 function todayDate(){
     const now=new Date();
     return new Date(now.getFullYear(),now.getMonth(),now.getDate());
@@ -249,6 +314,7 @@ function go(p){
 
 function render(){
 
+    ensureWalletIcons();
     ensureTaskDates();
 
     const screen=document.getElementById('screen');
@@ -1868,8 +1934,8 @@ function walletRow(w){
         class="wallet-row"
         onclick="walletDetail(${w.id})">
 
-        <div class="wallet-icon ${w.cls}">
-            ${w.icon}
+        <div class="wallet-icon ${w.cls} ${walletIconCodeClass(w.icon)}">
+            ${esc(w.icon)}
         </div>
 
         <div class="wallet-main">
@@ -2024,6 +2090,8 @@ function walletList(){
 
 function walletModal(){
 
+    picked='🏦';
+
     openSheet(`
 
         <div class="close-row">
@@ -2053,12 +2121,7 @@ function walletModal(){
             <label>Chọn biểu tượng</label>
 
             <div class="quick-grid">
-
-                <button type="button" class="quick" onclick="pickIcon('🏦')">🏦</button>
-                <button type="button" class="quick" onclick="pickIcon('▣')">▣</button>
-                <button type="button" class="quick" onclick="pickIcon('▤')">▤</button>
-                <button type="button" class="quick" onclick="pickIcon('💳')">💳</button>
-
+                ${walletIconChoiceGrid('pickIcon',picked)}
             </div>
 
         </div>
@@ -2106,7 +2169,11 @@ function pickIcon(x){
 
     picked=x;
 
-    toast('Đã chọn '+x);
+    document.querySelectorAll('.icon-choice').forEach(button=>
+        button.classList.toggle('selected',button.dataset.icon===x)
+    );
+
+    toast('Đã chọn biểu tượng '+(walletIconOptions.find(option=>option.icon===x)?.label||x));
 }
 
 function addWallet(){
@@ -2138,7 +2205,7 @@ function addWallet(){
 
         icon:picked,
 
-        cls:'bank'
+        cls:walletIconClass(picked)
 
     });
 
@@ -2177,7 +2244,7 @@ function walletDetail(id){
         <div class="detail-hero">
 
             <b>
-                ${w.icon}
+                ${esc(w.icon)}
                 ${esc(w.name)}　◉
             </b>
 
@@ -2333,13 +2400,7 @@ function editWallet(id){
             <label>Biểu tượng</label>
 
             <div class="quick-grid">
-
-                <button type="button" class="quick" onclick="setEditWalletIcon('🏦')">🏦</button>
-                <button type="button" class="quick" onclick="setEditWalletIcon('▣')">▣</button>
-                <button type="button" class="quick" onclick="setEditWalletIcon('▤')">▤</button>
-                <button type="button" class="quick" onclick="setEditWalletIcon('💳')">💳</button>
-                <button type="button" class="quick" onclick="setEditWalletIcon('💰')">💰</button>
-
+                ${walletIconChoiceGrid('setEditWalletIcon',w.icon)}
             </div>
 
         </div>
@@ -2364,7 +2425,11 @@ function setEditWalletIcon(icon){
 
     document.getElementById('editWIcon').value=icon;
 
-    toast('Đã chọn biểu tượng');
+    document.querySelectorAll('.icon-choice').forEach(button=>
+        button.classList.toggle('selected',button.dataset.icon===icon)
+    );
+
+    toast('Đã chọn biểu tượng '+(walletIconOptions.find(option=>option.icon===icon)?.label||icon));
 }
 
 function saveWalletEdit(id){
@@ -2395,6 +2460,8 @@ function saveWalletEdit(id){
         .getElementById('editWIcon')
         .value
         ||w.icon;
+
+    w.cls=walletIconClass(w.icon);
 
     save();
 
@@ -3462,8 +3529,8 @@ function statsByWallet(){
                         class="bar-row"
                         onclick="walletDetail(${w.id})">
 
-                        <div class="wallet-icon ${w.cls}">
-                            ${w.icon}
+                        <div class="wallet-icon ${w.cls} ${walletIconCodeClass(w.icon)}">
+                            ${esc(w.icon)}
                         </div>
 
                         <div class="grow">
